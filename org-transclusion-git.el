@@ -1,6 +1,6 @@
 ;;; org-transclusion-git.el --- Git link support for org-transclusion -*- lexical-binding: t; -*-
 
-;; Author: Your Name <your.email@example.com>
+;; Author: gggion <gggion123@gmail.com>
 ;; Keywords: convenience, files, hypermedia, outlines
 ;; Package-Requires: ((emacs "27.1") (org-transclusion "1.4.0"))
 
@@ -25,11 +25,11 @@
 ;;
 ;; Basic usage:
 ;;
-;;     #+transclude: [[git:~/path/to/file.fnl::commit-hash]]
+;;     #+transclude: [[git:~/path/to/file.el::commit-hash]]
 ;;
 ;; With search options and thing-at-point:
 ;;
-;;     #+transclude: [[git:~/path/to/file.fnl::commit-hash::(fn function-name]] :src fennel :thingatpt defun
+;;     #+transclude: [[git:~/path/to/file.el::commit-hash::(defun function-name]] :src elisp :thingatpt sexp
 ;;
 ;; The extension supports all standard org-transclusion properties:
 ;; - :src - Wrap content in a source block
