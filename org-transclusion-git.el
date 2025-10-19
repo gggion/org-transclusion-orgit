@@ -33,7 +33,7 @@
 ;;
 ;; The extension supports all standard org-transclusion properties:
 ;; - :src - Wrap content in a source block
-;; - :lines - Transclude specific line ranges
+;; - :lines - Transclude specific line ranges (e.g., "1-10", "-5", "10-")
 ;; - :thing-at-point (or :thingatpt) - Extract specific syntactic elements
 ;; - :end - Dynamic end search term
 ;; - :rest - Additional source block properties
@@ -145,7 +145,7 @@ Return the file content at the specified commit as a string."
          (relpath (nth 1 dirlist)))
     
     (unless gitdir
-      (user-error "File `%s' is not in a git repository" filepath))
+      (user-error "File =%s' is not in a git repository" filepath))
     
     (let ((object (concat commit ":" relpath)))
       (with-temp-buffer
@@ -217,22 +217,51 @@ Return a payload plist suitable for org-transclusion."
                        (back-to-indentation)
                        (bounds-of-thing-at-point thing-symbol))))
            
-           ;; Determine beginning and end positions
+           ;; Parse :lines property
+           (lines (plist-get plist :lines))
+           (range (when lines (split-string lines "-")))
+           (lbeg-str (when range (car range)))
+           (lend-str (when range (cadr range)))
+           ;; Handle empty strings as nil for proper logic
+           (lbeg (when (and lbeg-str (not (string-empty-p lbeg-str)))
+                   (string-to-number lbeg-str)))
+           (lend (when (and lend-str (not (string-empty-p lend-str)))
+                   (string-to-number lend-str)))
+           
+           ;; Determine beginning position
            (beg (cond
                  ;; Use bounds from thing-at-point if available
                  ((and bounds (car bounds)))
                  
-                 ;; Use start-pos with :lines offset
-                 (t (let ((lines (plist-get plist :lines)))
-                      (if lines
-                          (let* ((range (split-string lines "-"))
-                                 (lbeg (string-to-number (car range))))
-                            (goto-char (or start-pos (point-min)))
-                            (when (> lbeg 0)
-                              (forward-line (1- lbeg)))
-                            (point))
-                        (or start-pos (point-min)))))))
+                 ;; Use :lines with proper handling of negative ranges
+                 (lines
+                  (save-excursion
+                    (cond
+                     ;; "-N" means last N lines
+                     ((and (null lbeg) lend)
+                      (goto-char (point-max))
+                      (forward-line (- lend))
+                      (line-beginning-position))
+                     
+                     ;; "N-" means from line N to end
+                     ((and lbeg (null lend))
+                      (goto-char (or start-pos (point-min)))
+                      (forward-line (1- lbeg))
+                      (point))
+                     
+                     ;; "N-M" means from line N to line M
+                     ((and lbeg lend)
+                      (goto-char (or start-pos (point-min)))
+                      (forward-line (1- lbeg))
+                      (point))
+                     
+                     ;; Fallback
+                     (t (or start-pos (point-min))))))
+                 
+                 ;; Default to start-pos
+                 (t (or start-pos (point-min)))))
            
+           ;; Determine end position
            (end (cond
                  ;; Use bounds from thing-at-point if available
                  ((and bounds (cdr bounds)))
@@ -246,17 +275,26 @@ Return a payload plist suitable for org-transclusion."
                         (line-beginning-position)))))
                  
                  ;; Use :lines range
-                 ((plist-get plist :lines)
-                  (let* ((lines (plist-get plist :lines))
-                         (range (split-string lines "-"))
-                         (lend (string-to-number (cadr range))))
-                    (if (zerop lend)
-                        (point-max)
-                      (save-excursion
-                        (goto-char (or start-pos (point-min)))
-                        (forward-line (1- lend))
-                        (end-of-line)
-                        (1+ (point))))))
+                 (lines
+                  (save-excursion
+                    (cond
+                     ;; "-N" means to end of buffer
+                     ((and (null lbeg) lend)
+                      (point-max))
+                     
+                     ;; "N-" means to end of buffer
+                     ((and lbeg (null lend))
+                      (point-max))
+                     
+                     ;; "N-M" means to line M
+                     ((and lbeg lend)
+                      (goto-char (or start-pos (point-min)))
+                      (forward-line (1- lend))
+                      (end-of-line)
+                      (1+ (point)))
+                     
+                     ;; Fallback
+                     (t (point-max)))))
                  
                  ;; Default to end of buffer
                  (t (point-max))))
