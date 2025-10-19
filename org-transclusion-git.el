@@ -78,63 +78,68 @@ applies the same processing as org-transclusion-src-lines, supporting
   (let ((type (org-element-property :type link)))
     (when (or (string= type "git")
               (string= type "gitbare"))
-      (let* ((raw-link (org-element-property :raw-link link))
-             (path (org-element-property :path link))
-             (search-option (org-element-property :search-option link))
-             (git-content (org-transclusion--git-get-content type path search-option)))
+      (let* ((path (org-element-property :path link))
+             ;; Parse the path using ol-git-link's parser
+             ;; Format: "filepath::commit::search" or "gitdir::object"
+             (parts (org-git-split-string path))
+             (git-content (org-transclusion--git-get-content type parts)))
         (when git-content
           ;; Create a temporary buffer with the git content
           (let ((temp-buf (generate-new-buffer " *org-transclusion-git*")))
             (with-current-buffer temp-buf
               (insert git-content)
               ;; Set appropriate major mode based on file extension
-              (let ((filename (org-transclusion--git-extract-filename path)))
+              (let ((filename (org-transclusion--git-extract-filename parts)))
                 (when filename
                   (set-visited-file-name filename t t)
                   (set-auto-mode)))
               
               ;; Now process the content using the same logic as src-lines
-              (let* ((payload (org-transclusion--git-process-content
-                               temp-buf search-option plist)))
+              (let* ((search-string (nth 2 parts))  ; Third part is search string
+                     (payload (org-transclusion--git-process-content
+                               temp-buf search-string plist)))
                 ;; Add git-specific metadata
                 (plist-put payload :tc-type
                            (or (plist-get plist :src) "git"))
                 payload))))))))
 
-(defun org-transclusion--git-get-content (link-type path search-option)
+(defun org-transclusion--git-get-content (link-type parts)
   "Extract content from git repository.
 
 LINK-TYPE is either \"git\" or \"gitbare\".
-PATH is the link path (file path for git:, git-dir for gitbare:).
-SEARCH-OPTION contains the commit reference and optional search string.
+PARTS is the result of org-git-split-string on the link path.
+
+For git: links, PARTS is (filepath commit search-string).
+For gitbare: links, PARTS is (gitdir object search-string).
 
 Return the file content as a string, or nil if extraction fails."
   (condition-case err
       (cond
        ;; Handle git: links (user-friendly format)
        ((string= link-type "git")
-        (org-transclusion--git-get-content-user-friendly path search-option))
+        (org-transclusion--git-get-content-user-friendly parts))
        
        ;; Handle gitbare: links (bare format)
        ((string= link-type "gitbare")
-        (org-transclusion--git-get-content-bare path search-option))
+        (org-transclusion--git-get-content-bare parts))
        
        (t nil))
     (error
      (message "Error extracting git content: %s" (error-message-string err))
      nil)))
 
-(defun org-transclusion--git-get-content-user-friendly (filepath search-option)
+(defun org-transclusion--git-get-content-user-friendly (parts)
   "Extract content from git: link.
 
-FILEPATH is the path to the file in the working directory.
-SEARCH-OPTION contains the commit reference (e.g., \"7f2667d\").
+PARTS is (filepath commit search-string) from org-git-split-string.
 
 Return the file content at the specified commit as a string."
   (unless (featurep 'ol-git-link)
     (user-error "ol-git-link package is required for git: links"))
   
-  (let* ((expanded-path (expand-file-name filepath))
+  (let* ((filepath (nth 0 parts))
+         (commit (nth 1 parts))
+         (expanded-path (expand-file-name filepath))
          (dirlist (org-git-find-gitdir (file-truename expanded-path)))
          (gitdir (nth 0 dirlist))
          (relpath (nth 1 dirlist)))
@@ -142,72 +147,61 @@ Return the file content at the specified commit as a string."
     (unless gitdir
       (user-error "File `%s' is not in a git repository" filepath))
     
-    ;; Extract commit from search-option (format: "commit::search-string")
-    ;; or just "commit" if no search string
-    (let* ((parts (split-string search-option "::"))
-           (commit (car parts))
-           (object (concat commit ":" relpath)))
-      
+    (let ((object (concat commit ":" relpath)))
       (with-temp-buffer
         (org-git-show gitdir object (current-buffer))
         (buffer-string)))))
 
-(defun org-transclusion--git-get-content-bare (git-path search-option)
+(defun org-transclusion--git-get-content-bare (parts)
   "Extract content from gitbare: link.
 
-GIT-PATH is the path to the .git directory.
-SEARCH-OPTION contains the git object specification.
+PARTS is (gitdir object search-string) from org-git-split-string.
 
 Return the file content as a string."
   (unless (featurep 'ol-git-link)
     (user-error "ol-git-link package is required for gitbare: links"))
   
-  (let* ((gitdir (if (string-suffix-p "/.git" git-path)
+  (let* ((git-path (nth 0 parts))
+         (object (nth 1 parts))
+         (gitdir (if (string-suffix-p "/.git" git-path)
                      (expand-file-name git-path)
-                   (expand-file-name ".git" git-path)))
-         (object search-option))
+                   (expand-file-name ".git" git-path))))
     
     (with-temp-buffer
       (org-git-show gitdir object (current-buffer))
       (buffer-string))))
 
-(defun org-transclusion--git-extract-filename (path)
-  "Extract filename from git link PATH.
+(defun org-transclusion--git-extract-filename (parts)
+  "Extract filename from git link PARTS.
 
-For git: links, PATH is the file path.
-For gitbare: links, extract from the object specification.
+PARTS is the result of org-git-split-string.
 
 Return the filename or nil if it cannot be determined."
-  (cond
-   ;; For git: links, path is the file path
-   ((file-name-nondirectory path))
-   
-   ;; For gitbare: links, try to extract from object spec
-   ((string-match ":[^:]+$" path)
-    (file-name-nondirectory (match-string 0 path)))
-   
-   (t nil)))
+  (let ((filepath (nth 0 parts)))
+    (cond
+     ;; For git: links, first part is the file path
+     ((and filepath (file-name-nondirectory filepath)))
+     
+     ;; For gitbare: links, try to extract from object spec
+     ((and filepath (string-match ":[^:]+$" filepath))
+      (file-name-nondirectory (match-string 0 filepath)))
+     
+     (t nil))))
 
-(defun org-transclusion--git-process-content (temp-buf search-option plist)
+(defun org-transclusion--git-process-content (temp-buf search-string plist)
   "Process git content in TEMP-BUF according to PLIST properties.
 
 TEMP-BUF is a temporary buffer containing the git file content.
-SEARCH-OPTION may contain an additional search string after the commit.
+SEARCH-STRING is the optional search string from the link (third part).
 PLIST contains transclusion properties like :src, :lines, :thing-at-point.
 
 Return a payload plist suitable for org-transclusion."
   (with-current-buffer temp-buf
-    (let* (;; Extract search string from search-option if present
-           ;; Format: "commit::search-string" or just "commit"
-           (parts (when search-option (split-string search-option "::")))
-           (inner-search (when (> (length parts) 1)
-                           (mapconcat #'identity (cdr parts) "::")))
-           
-           ;; Find start position based on search string
-           (start-pos (if inner-search
+    (let* (;; Find start position based on search string
+           (start-pos (if (and search-string (not (string-empty-p search-string)))
                           (save-excursion
                             (goto-char (point-min))
-                            (when (search-forward inner-search nil t)
+                            (when (search-forward search-string nil t)
                               (line-beginning-position)))
                         (point-min)))
            
