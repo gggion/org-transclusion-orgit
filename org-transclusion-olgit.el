@@ -1,14 +1,5 @@
-;;; org-transclusion-git.el --- Git link support for org-transclusion -*- lexical-binding: t; -*-
-
-;; Author: gggion <gggion123@gmail.com>
-;; Keywords: convenience, files, hypermedia, outlines
-;; Package-Requires: ((emacs "27.1") (org-transclusion "1.4.0"))
-
-;; This program is free software; you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
+;;; org-transclusion-olgit.el --- Description -*- lexical-binding: t; -*-
+;;
 ;;; Commentary:
 
 ;; This extension adds support for transcluding content from git
@@ -43,11 +34,11 @@
 ;;;; Setting up the extension
 
 (add-hook 'org-transclusion-add-functions
-          #'org-transclusion-add-git)
+          #'org-transclusion-olgit-add)
 
 ;;;; Core Functions
 
-(defun org-transclusion-add-git (link plist)
+(defun org-transclusion-olgit-add (link plist)
   "Return payload for git: or gitbare: LINK with properties PLIST.
 
 Extract git content to a temporary buffer, then delegate to
@@ -63,11 +54,11 @@ Return a payload plist or nil if link type is not supported."
               (string= type "gitbare"))
       (let* ((path (org-element-property :path link))
              (parts (org-git-split-string path))
-             (git-content (org-transclusion--git-get-content type parts)))
+             (git-content (org-transclusion-olgit--get-content type parts)))
         (when git-content
           ;; Create temporary buffer with git content
           (let* ((temp-buf (generate-new-buffer " *org-transclusion-git*"))
-                 (filename (org-transclusion--git-extract-filename parts))
+                 (filename (org-transclusion-olgit--extract-filename parts))
                  (search-string (nth 2 parts)))
             (with-current-buffer temp-buf
               (insert git-content)
@@ -93,7 +84,7 @@ Return a payload plist or nil if link type is not supported."
                            (or (plist-get plist :src) "git")))
               payload)))))))
 
-(defun org-transclusion--git-get-content (link-type parts)
+(defun org-transclusion-olgit--get-content (link-type parts)
   "Extract content from git repository.
 
 LINK-TYPE is either \"git\" or \"gitbare\".
@@ -103,22 +94,22 @@ Return the file content as a string, or nil if extraction fails."
   (condition-case err
       (cond
        ((string= link-type "git")
-        (org-transclusion--git-get-content-user-friendly parts))
+        (org-transclusion-olgit--get-content-user-friendly parts))
        ((string= link-type "gitbare")
-        (org-transclusion--git-get-content-bare parts))
+        (org-transclusion-olgit--get-content-bare parts))
        (t nil))
     (error
      (message "Error extracting git content: %s" (error-message-string err))
      nil)))
 
-(defun org-transclusion--git-get-content-user-friendly (parts)
+(defun org-transclusion-olgit--get-content-user-friendly (parts)
   "Extract content from git: link.
 
 PARTS is (filepath commit search-string) from org-git-split-string.
 
 Return the file content at the specified commit as a string."
   (unless (featurep 'ol-git-link)
-    (user-error "ol-git-link package is required for git: links"))
+    (user-error "ERROR: ol-git-link package is required for git: links"))
   
   (let* ((filepath (nth 0 parts))
          (commit (nth 1 parts))
@@ -135,14 +126,14 @@ Return the file content at the specified commit as a string."
         (org-git-show gitdir object (current-buffer))
         (buffer-string)))))
 
-(defun org-transclusion--git-get-content-bare (parts)
+(defun org-transclusion-olgit--get-content-bare (parts)
   "Extract content from gitbare: link.
 
 PARTS is (gitdir object search-string) from org-git-split-string.
 
 Return the file content as a string."
   (unless (featurep 'ol-git-link)
-    (user-error "ol-git-link package is required for gitbare: links"))
+    (user-error "ERROR: ol-git-link package is required for gitbare: links"))
   
   (let* ((git-path (nth 0 parts))
          (object (nth 1 parts))
@@ -154,7 +145,7 @@ Return the file content as a string."
       (org-git-show gitdir object (current-buffer))
       (buffer-string))))
 
-(defun org-transclusion--git-extract-filename (parts)
+(defun org-transclusion-olgit--extract-filename (parts)
   "Extract filename from git link PARTS.
 
 Return the filename or nil if it cannot be determined."
@@ -165,6 +156,6 @@ Return the filename or nil if it cannot be determined."
       (file-name-nondirectory (match-string 0 filepath)))
      (t nil))))
 
-(provide 'org-transclusion-git)
+(provide 'org-transclusion-olgit)
 
-;;; org-transclusion-git.el ends here
+;;; org-transclusion-olgit.el ends here
