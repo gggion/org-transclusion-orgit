@@ -1,9 +1,4 @@
-#+title: org-transclusion-orgit
-
-
-Support for transcluding content from Git repositories using orgit links.
-
-* Overview
+#+title: org-transclusion-orgit - transcluding content from orgit links.
 
 =org-transclusion-orgit= extends [[https://github.com/nobiot/org-transclusion][org-transclusion]] to support orgit link types.
 Currently implements support for [[https://github.com/gggion/orgit-file][orgit-file:]] links, which point to files at
