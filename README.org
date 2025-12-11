@@ -1,0 +1,143 @@
+#+title: org-transclusion-orgit
+
+
+Support for transcluding content from Git repositories using orgit links.
+
+* Overview
+
+=org-transclusion-orgit= extends [[https://github.com/nobiot/org-transclusion][org-transclusion]] to support orgit link types.
+Currently implements support for [[https://github.com/gggion/orgit-file][orgit-file:]] links, which point to files at
+specific Git revisions.
+
+Transcluded content from Git revisions is *read-only*. Live-sync editing is not
+supported since transclusions represent historical state.
+
+* Requirements
+
+- Emacs 29.1+
+- [[https://github.com/nobiot/org-transclusion][org-transclusion]] 1.4.0+
+- [[https://github.com/gggion/orgit-file][orgit-file]] 0.3.0+
+- [[https://github.com/magit/orgit][orgit]] 2.0+
+- [[https://github.com/magit/magit][magit]] 4.3+
+
+* Installation
+
+** Using =use-package= with =straight.el=
+
+#+begin_src elisp
+(use-package org-transclusion-orgit
+:straight (org-transclusion-orgit
+        :type git
+        :host github
+        :repo "gggion/org-transclusion-orgit")
+:after org-transclusion)
+#+end_src
+
+** Manual installation
+
+Clone the repository and add to your load path:
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/org-transclusion-orgit")
+(require 'org-transclusion-orgit)
+#+end_src
+
+* Basic Usage
+
+** Transclude entire file at revision
+
+#+begin_src org
+#+transclude: [[orgit-file:/path/to/repo::REV::path/to/file.el]]
+#+end_src
+
+** Transclude with search option
+
+Org search strings work as expected:
+
+#+begin_src org
+#+transclude: [[orgit-file:/path/to/repo::main::src/core.el::*Core Functions]]
+#+transclude: [[orgit-file:/path/to/repo::v1.0.0::README.org::#introduction]]
+#+transclude: [[orgit-file:/path/to/repo::develop::lib.el::42]]
+#+end_src
+
+** Use with =:lines= or =:src= properties
+
+Combine with org-transclusion's standard properties:
+
+#+begin_src org
+#+transclude: [[orgit-file:~/projects/emacs::HEAD::.emacs.d/init.el]] :lines 1-50
+#+transclude: [[orgit-file:my-project::v2.1::config.yaml]] :src yaml
+#+end_src
+
+** Repository name format
+
+When =orgit-store-repository-id= is non-nil and the repository is configured in =magit-repository-directories=:
+
+#+begin_src org
+#+transclude: [[orgit-file:emacs::emacs-29.1::lisp/org.el::*Visibility Cycling]]
+#+end_src
+
+Otherwise, use absolute paths:
+
+#+begin_src org
+#+transclude: [[orgit-file:/usr/local/src/emacs::emacs-29.1::lisp/org.el::*Visibility Cycling]]
+#+end_src
+
+* Link Format
+
+The =orgit-file:= link format is:
+
+#+begin_src 
+orgit-file:REPO::REV::FILE
+orgit-file:REPO::REV::FILE::SEARCH
+#+end_src
+
+Where:
+- =REPO=: Absolute path or repository name from =magit-repository-directories=
+- =REV=: Any Git revision (commit hash, branch, tag, HEAD, etc.)
+- =FILE=: Path to file within repository (relative to repository root)
+- =SEARCH=: Optional Org search string (heading, custom-id, line number, regex)
+
+For details on =orgit-file:= link behavior and configuration, see the [[https://github.com/gggion/orgit-file][orgit-file documentation]].
+
+* How It Works
+
+When org-transclusion encounters an =orgit-file:= link:
+
+1. Opens the file at the specified revision using =magit-find-file-noselect=
+2. Extracts content from the resulting Magit blob buffer
+3. Inserts content into the transclusion buffer
+4. Creates read-only overlay showing the transcluded content
+
+The source buffer (Magit blob) and transclusion buffer are linked through
+overlays, but *the transclusion is read-only*, you cannot edit historical file
+content.
+
+* Limitations
+
+- *No live-sync editing*: Transcluded content from Git revisions cannot be edited
+- *Performance with large files*: Opening large files at historical revisions may be slow
+- *Search options*: Only Org's standard search mechanisms are supported (heading, custom-id, line number, regex)
+
+* Future Plans
+
+Support for additional orgit link types:
+
+- =orgit-rev:= links (Magit revision buffers)
+- =orgit-log:= links (Magit log buffers)
+
+* Related Packages
+
+- [[https://github.com/nobiot/org-transclusion][org-transclusion]] - Base transclusion system
+- [[https://github.com/magit/orgit][orgit]] - Org links to Magit buffers
+- [[https://github.com/gggion/orgit-file][orgit-file]] - Org links to files in Git repositories
+- [[https://github.com/magit/magit][magit]] - Git interface for Emacs
+
+* License
+
+GPL-3.0-or-later
+
+---
+
+*Note*: This package focuses exclusively on transclusion. For general information about =orgit-file:= link configuration, export behavior, and link creation, see the [[https://github.com/gggion/orgit-file][orgit-file documentation]].
+
